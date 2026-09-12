@@ -96,12 +96,15 @@ def build_html_report(results, generated_at_str):
     watchlist = [r for r in results if r.get("watch_flags")]
     watchlist.sort(key=lambda r: len(r.get("watch_flags", [])), reverse=True)
 
-    gold_results = [r for r in actionable if r["market"] == "GOLD"]
+    gold_results = [r for r in actionable if r["market"] in ("GOLD", "SILVER")]
     crypto_results = [r for r in actionable if r["market"] == "CRYPTO"]
 
     body = ""
     if gold_results:
-        body += '<h3 style="direction:rtl;text-align:right;font-family:Tahoma,Arial,sans-serif;">🥇 طلا</h3>'
+        body += (
+            '<h3 style="direction:rtl;text-align:right;font-family:Tahoma,Arial,sans-serif;">'
+            "🥇🥈 فلزات گران‌بها (طلا و نقره)</h3>"
+        )
         body += "".join(_signal_card(r) for r in gold_results)
     if crypto_results:
         body += (
