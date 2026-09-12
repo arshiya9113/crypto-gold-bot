@@ -12,7 +12,7 @@ from datetime import datetime
 import pytz
 
 from . import config
-from .data_fetcher import fetch_crypto_ohlcv, fetch_gold_ohlcv, get_exchange, get_top_crypto_symbols
+from .data_fetcher import fetch_crypto_ohlcv, fetch_gold_ohlcv, get_top_crypto_symbols_multi
 from .emailer import build_html_report, build_plain_text_report, send_email
 from .history import log_signal_history
 from .signal_engine import analyze_symbol
@@ -36,15 +36,15 @@ def run():
             print(f"[WARN] تحلیل طلا برای {ticker} ممکن نشد (داده ناکافی)")
 
     # --- تحلیل رمزارزها ---
-    exchange = get_exchange()
-    try:
-        symbols = get_top_crypto_symbols(
-            exchange,
-            max_symbols=config.MAX_CRYPTO_SYMBOLS,
-            min_quote_volume=config.MIN_QUOTE_VOLUME_USDT,
-        )
-    except Exception as exc:  # noqa: BLE001
-        print(f"[ERROR] دریافت لیست نمادهای برتر ناموفق بود: {exc}")
+    exchange, symbols = get_top_crypto_symbols_multi(
+        config.CRYPTO_EXCHANGES,
+        max_symbols=config.MAX_CRYPTO_SYMBOLS,
+        min_quote_volume=config.MIN_QUOTE_VOLUME_USDT,
+        quotes=tuple(config.CRYPTO_QUOTE_CURRENCIES),
+    )
+
+    if exchange is None:
+        print("[ERROR] هیچ‌کدام از صرافی‌های تنظیم‌شده در دسترس نبودند؛ بخش کریپتو رد شد.")
         symbols = []
 
     print(f"[INFO] تعداد رمزارزهای بررسی‌شونده: {len(symbols)}")
@@ -69,8 +69,17 @@ def run():
 
     print(f"[INFO] تعداد کل سیگنال‌های قابل‌اتکا: {len(actionable)}")
 
-    html = build_html_report(top_results, now_str)
-    plain = build_plain_text_report(top_results)
+    top_symbols = {r["symbol"] for r in top_results}
+    watch_extra = [
+        r for r in results
+        if r.get("watch_flags") and r["symbol"] not in top_symbols
+    ]
+    print(f"[INFO] تعداد موارد رصد ویژه (احتمال حرکت انفجاری): {len(watch_extra)}")
+
+    email_input = top_results + watch_extra
+
+    html = build_html_report(email_input, now_str)
+    plain = build_plain_text_report(email_input)
 
     if config.EMAIL_FROM and config.EMAIL_PASSWORD and config.EMAIL_TO:
         try:
