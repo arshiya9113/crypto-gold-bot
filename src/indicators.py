@@ -46,6 +46,12 @@ def compute_indicators(df):
 
     df["atr14"] = AverageTrueRange(df["high"], df["low"], df["close"]).average_true_range()
 
+    # کانال کلتنر (Keltner Channel) - برای تشخیص فشردگی نوسان (Volatility Squeeze)
+    df["ema20"] = EMAIndicator(df["close"], window=20).ema_indicator()
+    df["kc_mid"] = df["ema20"]
+    df["kc_high"] = df["kc_mid"] + 1.5 * df["atr14"]
+    df["kc_low"] = df["kc_mid"] - 1.5 * df["atr14"]
+
     df["obv"] = OnBalanceVolumeIndicator(df["close"], df["volume"]).on_balance_volume()
     df["vol_sma20"] = df["volume"].rolling(20).mean()
 
