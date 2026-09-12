@@ -9,9 +9,11 @@ import numpy as np
 
 from .indicators import compute_indicators
 from .price_action import (
+    detect_accumulation_signal,
     detect_candlestick_pattern,
     detect_star_patterns,
     detect_trend_structure,
+    detect_volatility_squeeze,
     donchian_breakout,
     find_swing_points,
     nearest_levels,
@@ -142,6 +144,17 @@ def analyze_symbol(df, symbol, market_type, timeframe):
         if points != 0:
             reasons.append(f"الگوی کندلی: {name}")
 
+    # --- ۱۱. رصد قبل از پامپ: فشردگی نوسان و انباشت مشکوک ---
+    watch_flags = []
+    squeeze_state = detect_volatility_squeeze(df, lookback=6)
+    if squeeze_state == "SQUEEZE_ON":
+        watch_flags.append("فشردگی نوسان فعال (Squeeze) - نوسان به‌شدت پایین آمده، احتمال حرکت انفجاری در کندل‌های آینده")
+    elif squeeze_state == "SQUEEZE_RELEASED":
+        watch_flags.append("فشردگی نوسان به‌تازگی آزاد شده - احتمال شروع حرکت شارپ در همین لحظه")
+
+    if detect_accumulation_signal(df, lookback=5):
+        watch_flags.append("حجم معاملات غیرعادی بالا همراه با نوسان قیمت بسیار کم - نشانه احتمالی انباشت/توزیع سنگین")
+
     score = max(-100.0, min(100.0, score))
     confidence = round(abs(score), 1)
 
@@ -166,6 +179,7 @@ def analyze_symbol(df, symbol, market_type, timeframe):
             "signal": signal,
             "confidence": confidence,
             "price": close,
+            "watch_flags": watch_flags,
         }
 
     atr = float(last["atr14"])
@@ -212,4 +226,5 @@ def analyze_symbol(df, symbol, market_type, timeframe):
         "risk_reward_2": risk_reward_2,
         "atr": atr,
         "reasons": reasons,
+        "watch_flags": watch_flags,
     }
