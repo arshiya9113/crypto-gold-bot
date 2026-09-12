@@ -39,8 +39,18 @@ EMAIL_PASSWORD = _get_str("EMAIL_PASSWORD", "")  # برای جیمیل: App Pass
 EMAIL_TO = [e.strip() for e in _get_str("EMAIL_TO", "").split(",") if e.strip()]
 
 # --- تنظیمات بازار کریپتو ---
-MAX_CRYPTO_SYMBOLS = _get_int("MAX_CRYPTO_SYMBOLS", 60)          # چند رمزارز برتر بررسی شود
-MIN_QUOTE_VOLUME_USDT = _get_float("MIN_QUOTE_VOLUME_USDT", 5_000_000)  # حداقل حجم معاملات ۲۴ ساعته
+# لیست صرافی‌ها به ترتیب اولویت امتحان می‌شوند تا اولین صرافی در دسترس (از نظر
+# محدودیت جغرافیایی سرور اجراکننده) پیدا شود. شناسه‌ها باید نام صرافی در ccxt باشند.
+CRYPTO_EXCHANGES = [
+    e.strip() for e in _get_str(
+        "CRYPTO_EXCHANGES", "binanceus,kraken,coinbase,kucoin,okx,bybit,gateio,mexc"
+    ).split(",") if e.strip()
+]
+CRYPTO_QUOTE_CURRENCIES = [
+    q.strip() for q in _get_str("CRYPTO_QUOTE_CURRENCIES", "USDT,USD").split(",") if q.strip()
+]
+MAX_CRYPTO_SYMBOLS = _get_int("MAX_CRYPTO_SYMBOLS", 40)          # چند رمزارز برتر بررسی شود
+MIN_QUOTE_VOLUME_USDT = _get_float("MIN_QUOTE_VOLUME_USDT", 1_000_000)  # حداقل حجم معاملات ۲۴ ساعته
 CRYPTO_TIMEFRAME = _get_str("CRYPTO_TIMEFRAME", "1h")            # تایم‌فریم کندل‌ها
 CRYPTO_CANDLE_LIMIT = _get_int("CRYPTO_CANDLE_LIMIT", 300)       # تعداد کندل برای تحلیل
 TOP_SIGNALS_COUNT = _get_int("TOP_SIGNALS_COUNT", 15)            # چند سیگنال برتر در ایمیل نمایش داده شود
