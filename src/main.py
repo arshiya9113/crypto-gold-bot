@@ -25,15 +25,16 @@ def run():
 
     results = []
 
-    # --- تحلیل طلا ---
-    for ticker in config.GOLD_TICKERS:
-        df = fetch_gold_ohlcv(ticker=ticker, interval=config.GOLD_INTERVAL, period=config.GOLD_PERIOD)
-        result = analyze_symbol(df, ticker, "GOLD", config.GOLD_INTERVAL)
+    # --- تحلیل فلزات گران‌بها (طلا و نقره) ---
+    for ticker in config.METAL_TICKERS:
+        df = fetch_gold_ohlcv(ticker=ticker, interval=config.METAL_INTERVAL, period=config.METAL_PERIOD)
+        market_label = config.METAL_LABELS.get(ticker, ticker)
+        result = analyze_symbol(df, ticker, market_label, config.METAL_INTERVAL)
         if result:
             results.append(result)
-            print(f"[GOLD] {ticker}: {result['signal']} (اطمینان={result.get('confidence')})")
+            print(f"[{market_label}] {ticker}: {result['signal']} (اطمینان={result.get('confidence')})")
         else:
-            print(f"[WARN] تحلیل طلا برای {ticker} ممکن نشد (داده ناکافی)")
+            print(f"[WARN] تحلیل {ticker} ممکن نشد (داده ناکافی)")
 
     # --- تحلیل رمزارزها ---
     exchange, symbols = get_top_crypto_symbols_multi(
@@ -62,9 +63,9 @@ def run():
     actionable.sort(key=lambda r: r["confidence"], reverse=True)
 
     top_results = list(actionable[: config.TOP_SIGNALS_COUNT])
-    gold_symbols_in_top = {r["symbol"] for r in top_results if r["market"] == "GOLD"}
+    metal_symbols_in_top = {r["symbol"] for r in top_results if r["market"] in ("GOLD", "SILVER")}
     for r in actionable:
-        if r["market"] == "GOLD" and r["symbol"] not in gold_symbols_in_top:
+        if r["market"] in ("GOLD", "SILVER") and r["symbol"] not in metal_symbols_in_top:
             top_results.append(r)
 
     print(f"[INFO] تعداد کل سیگنال‌های قابل‌اتکا: {len(actionable)}")
