@@ -214,4 +214,4 @@ def estimate_elliott_wave_hint(swing_highs, swing_lows):
     if not is_alternating:
         return None
 
-    return "IMPULSE_UP" if directions[0] == 1 else "IMPULSE_DOWN"
+    return "IMPULSE_UP" if directions[0] == 1 else "IMPULSE_DOWN" 
