@@ -34,7 +34,7 @@ jobs:
           MIN_QUOTE_VOLUME_USDT: ${{ vars.MIN_QUOTE_VOLUME_USDT }}
           CRYPTO_TIMEFRAME: ${{ vars.CRYPTO_TIMEFRAME }}
           TOP_SIGNALS_COUNT: ${{ vars.TOP_SIGNALS_COUNT }}
-          GOLD_TICKERS: ${{ vars.GOLD_TICKERS }}
+          METAL_TICKERS: ${{ vars.METAL_TICKERS }}
           TIMEZONE: ${{ vars.TIMEZONE }}
         run: python -m src.main
 
