@@ -1,6 +1,11 @@
 """
 دریافت داده‌های قیمتی:
-- کریپتو: از صرافی بایننس با کتابخانه ccxt (بدون نیاز به API Key برای داده OHLCV)
+- کریپتو: با کتابخانه ccxt، از یک لیست صرافی امتحان می‌شود تا اولین صرافی که از
+  محل اجرای سرور (مثلا سرورهای گیت‌هاب اکشن در آمریکا) در دسترس باشد پیدا شود.
+  علت این تصمیم: بایننس جهانی (binance.com) دسترسی از IP آمریکا را طبق قوانین
+  خودش مسدود می‌کند (خطای HTTP 451) و چون گیت‌هاب اکشن روی سرورهای آمریکایی
+  اجرا می‌شود، صرافی‌های جایگزین/سازگار با آمریکا (مثل Binance.US و Kraken) هم
+  در لیست قرار گرفته‌اند تا ربات همیشه بتواند داده بگیرد.
 - طلا: از یاهو فایننس با کتابخانه yfinance (نماد پیش‌فرض GC=F یعنی فیوچرز طلای کامکس)
 """
 import time
@@ -9,40 +14,63 @@ import ccxt
 import pandas as pd
 import yfinance as yf
 
-EXCLUDED_PREFIXES = ("UP/", "DOWN/", "BULL/", "BEAR/")
+LEVERAGED_TOKEN_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR")
 
 
-def get_exchange():
-    """صرافی بایننس را برای دریافت داده عمومی (بدون نیاز به کلید) آماده می‌کند."""
-    return ccxt.binance({"enableRateLimit": True})
+def _is_leveraged_token(symbol):
+    """نمادهای اهرمی مثل BTCUP/USDT یا ETHBEAR/USDT را تشخیص می‌دهد."""
+    base = symbol.split("/")[0]
+    return base.endswith(LEVERAGED_TOKEN_SUFFIXES)
 
 
-def get_top_crypto_symbols(exchange, max_symbols=40, min_quote_volume=5_000_000, quote="USDT"):
+def get_exchange(exchange_id):
+    """یک نمونه صرافی ccxt بر اساس شناسه (مثلا 'kraken') می‌سازد."""
+    exchange_class = getattr(ccxt, exchange_id)
+    return exchange_class({"enableRateLimit": True})
+
+
+def get_top_crypto_symbols_multi(exchange_ids, max_symbols=40, min_quote_volume=1_000_000,
+                                  quotes=("USDT", "USD")):
     """
-    فهرست نمادهای اسپات جفت‌شده با USDT را بر اساس حجم معاملات ۲۴ ساعته مرتب کرده
-    و N نماد برتر (پرمعامله‌ترین) را برمی‌گرداند.
+    صرافی‌های داده‌شده را به ترتیب امتحان می‌کند تا یکی از IP فعلی در دسترس باشد،
+    سپس پرمعامله‌ترین نمادهای آن (بر اساس حجم معاملات ۲۴ ساعته) را برمی‌گرداند.
+    خروجی: (exchange, symbols) یا (None, []) اگر هیچ صرافی در دسترس نبود.
     """
-    markets = exchange.load_markets()
-    tickers = exchange.fetch_tickers()
+    for exchange_id in exchange_ids:
+        try:
+            exchange = get_exchange(exchange_id)
+            markets = exchange.load_markets()
+            tickers = exchange.fetch_tickers()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WARN] صرافی {exchange_id} در دسترس نیست یا خطا داد: {exc}")
+            continue
 
-    candidates = []
-    for symbol, market in markets.items():
-        if not market.get("spot", True):
-            continue
-        if not symbol.endswith("/" + quote):
-            continue
-        if symbol.startswith(EXCLUDED_PREFIXES):
-            continue
-        ticker = tickers.get(symbol)
-        if not ticker:
-            continue
-        quote_volume = ticker.get("quoteVolume") or 0
-        if quote_volume < min_quote_volume:
-            continue
-        candidates.append((symbol, quote_volume))
+        candidates = []
+        for symbol, market in markets.items():
+            if not market.get("spot", True):
+                continue
+            if market.get("quote") not in quotes:
+                continue
+            if _is_leveraged_token(symbol):
+                continue
+            ticker = tickers.get(symbol)
+            if not ticker:
+                continue
+            quote_volume = ticker.get("quoteVolume") or 0
+            if quote_volume < min_quote_volume:
+                continue
+            candidates.append((symbol, quote_volume))
 
-    candidates.sort(key=lambda item: item[1], reverse=True)
-    return [symbol for symbol, _ in candidates[:max_symbols]]
+        if not candidates:
+            print(f"[WARN] صرافی {exchange_id} متصل شد ولی هیچ نماد واجد شرایطی یافت نشد")
+            continue
+
+        candidates.sort(key=lambda item: item[1], reverse=True)
+        symbols = [symbol for symbol, _ in candidates[:max_symbols]]
+        print(f"[INFO] اتصال موفق به صرافی {exchange_id} ({len(symbols)} نماد یافت شد)")
+        return exchange, symbols
+
+    return None, []
 
 
 def fetch_crypto_ohlcv(exchange, symbol, timeframe="1h", limit=300, retries=2):
