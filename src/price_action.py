@@ -8,6 +8,59 @@
 """
 
 
+def detect_volatility_squeeze(df, lookback=6):
+    """
+    فشردگی نوسان (Volatility Squeeze / TTM Squeeze): وقتی باند بولینگر کاملا داخل
+    کانال کلتنر قرار می‌گیرد یعنی نوسان به‌شدت افت کرده - این وضعیت معمولا قبل از
+    یک حرکت انفجاری (به هر دو سمت) اتفاق می‌افتد. جهت حرکت از این تابع مشخص نیست،
+    فقط هشدار می‌دهد که "چیزی در حال شکل‌گیری است".
+
+    خروجی:
+      'SQUEEZE_ON'       -> نوسان همین الان فشرده است (در حال آماده‌سازی)
+      'SQUEEZE_RELEASED' -> همین چند کندل پیش فشرده بود و تازه آزاد شده (لحظه احتمالی شروع حرکت)
+      None               -> وضعیت خاصی نیست
+    """
+    required = {"bb_high", "bb_low", "kc_high", "kc_low"}
+    if not required.issubset(df.columns) or len(df) < lookback + 1:
+        return None
+
+    squeeze_series = (df["bb_high"] < df["kc_high"]) & (df["bb_low"] > df["kc_low"])
+    squeeze_series = squeeze_series.dropna()
+    if len(squeeze_series) < lookback + 1:
+        return None
+
+    currently_on = bool(squeeze_series.iloc[-1])
+    was_on_recently = bool(squeeze_series.iloc[-lookback - 1 : -1].any())
+
+    if currently_on:
+        return "SQUEEZE_ON"
+    if was_on_recently:
+        return "SQUEEZE_RELEASED"
+    return None
+
+
+def detect_accumulation_signal(df, lookback=5, volume_mult=1.8, max_range_pct=0.025):
+    """
+    انباشت/توزیع مشکوک: حجم معاملات به‌طور محسوسی بالاتر از میانگین است ولی قیمت
+    در یک بازه بسیار کوچک نوسان کرده - نشانه‌ای از ورود سرمایه سنگین بدون حرکت
+    قابل توجه قیمت، که می‌تواند مقدمه یک حرکت شارپ باشد.
+    """
+    if "vol_sma20" not in df.columns or len(df) < lookback + 1:
+        return False
+
+    recent = df.iloc[-lookback:]
+    if recent["vol_sma20"].isna().any() or (recent["vol_sma20"] <= 0).any():
+        return False
+
+    avg_volume_ratio = (recent["volume"] / recent["vol_sma20"]).mean()
+    last_close = recent["close"].iloc[-1]
+    if last_close == 0:
+        return False
+    price_range_pct = (recent["high"].max() - recent["low"].min()) / last_close
+
+    return bool(avg_volume_ratio > volume_mult and price_range_pct < max_range_pct)
+
+
 def find_swing_points(df, order=3):
     """
     نقاط سوینگ های/لو را با روش فرکتال (مقایسه با N کندل قبل و بعد) پیدا می‌کند.
