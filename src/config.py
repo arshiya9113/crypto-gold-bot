@@ -55,11 +55,12 @@ CRYPTO_TIMEFRAME = _get_str("CRYPTO_TIMEFRAME", "1h")            # تایم‌ف
 CRYPTO_CANDLE_LIMIT = _get_int("CRYPTO_CANDLE_LIMIT", 300)       # تعداد کندل برای تحلیل
 TOP_SIGNALS_COUNT = _get_int("TOP_SIGNALS_COUNT", 15)            # چند سیگنال برتر در ایمیل نمایش داده شود
 
-# --- تنظیمات طلا ---
-# GC=F: فیوچرز طلای کامکس | می‌توان چند نماد را با کاما جدا کرد، مثلا "GC=F,XAUUSD=X"
-GOLD_TICKERS = [t.strip() for t in _get_str("GOLD_TICKERS", "GC=F").split(",") if t.strip()]
-GOLD_INTERVAL = _get_str("GOLD_INTERVAL", "1h")
-GOLD_PERIOD = _get_str("GOLD_PERIOD", "60d")
+# --- تنظیمات فلزات گران‌بها ---
+# GC=F: فیوچرز طلای کامکس | SI=F: فیوچرز نقره کامکس
+METAL_TICKERS = [t.strip() for t in _get_str("METAL_TICKERS", "GC=F,SI=F").split(",") if t.strip()]
+METAL_LABELS = {"GC=F": "GOLD", "SI=F": "SILVER"}
+METAL_INTERVAL = _get_str("METAL_INTERVAL", "1h")
+METAL_PERIOD = _get_str("METAL_PERIOD", "60d")
 
 # --- عمومی ---
 TIMEZONE = _get_str("TIMEZONE", "Asia/Tehran")
