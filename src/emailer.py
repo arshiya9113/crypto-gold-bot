@@ -70,9 +70,31 @@ def _signal_card(result):
     """
 
 
+def _watch_card(result):
+    flags_html = "".join(
+        f'<li style="margin-bottom:4px;">{flag}</li>' for flag in result.get("watch_flags", [])
+    )
+    return f"""
+    <div style="border:1px solid #e5e7eb;border-right:6px solid #f59e0b;border-radius:8px;
+                padding:14px 16px;margin-bottom:14px;background:#fffbeb;direction:rtl;text-align:right;
+                font-family:Tahoma,Arial,sans-serif;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:16px;font-weight:bold;">
+          {result['symbol']} <span style="color:#6b7280;font-size:13px;">({result['market']})</span>
+        </span>
+        <span style="color:#6b7280;font-size:13px;">قیمت فعلی: {_fmt(result.get('price'))}</span>
+      </div>
+      <ul style="margin:6px 0 0 0;padding-right:18px;font-size:13px;color:#78350f;">{flags_html}</ul>
+    </div>
+    """
+
+
 def build_html_report(results, generated_at_str):
     actionable = [r for r in results if r.get("signal") in ("LONG", "SHORT")]
     actionable.sort(key=lambda r: r["confidence"], reverse=True)
+
+    watchlist = [r for r in results if r.get("watch_flags")]
+    watchlist.sort(key=lambda r: len(r.get("watch_flags", [])), reverse=True)
 
     gold_results = [r for r in actionable if r["market"] == "GOLD"]
     crypto_results = [r for r in actionable if r["market"] == "CRYPTO"]
@@ -94,6 +116,20 @@ def build_html_report(results, generated_at_str):
             "بازار در وضعیت خنثی یا رنج قرار دارد.</p>"
         )
 
+    watch_body = ""
+    if watchlist:
+        watch_body = f"""
+        <div style="direction:rtl;text-align:right;font-family:Tahoma,Arial,sans-serif;
+                    margin-top:24px;margin-bottom:8px;">
+          <h3 style="margin:0 0 4px 0;">🔭 رصد ویژه: احتمال حرکت انفجاری نزدیک</h3>
+          <p style="font-size:12px;color:#92400e;margin:0 0 10px 0;">
+            این موارد <b>سیگنال معاملاتی نیستند</b> و جهت حرکت (صعود/نزول) هنوز مشخص نیست؛
+            صرفا نشانه‌ای از احتمال یک حرکت شارپ نزدیک هستند. فقط برای رصد و آماده‌باش.
+          </p>
+        </div>
+        """
+        watch_body += "".join(_watch_card(r) for r in watchlist[:10])
+
     return f"""
     <html>
     <body style="margin:0;padding:0;background:#f3f4f6;">
@@ -103,6 +139,7 @@ def build_html_report(results, generated_at_str):
           <p style="color:#6b7280;margin:4px 0 0 0;">زمان تولید گزارش: {generated_at_str}</p>
         </div>
         {body}
+        {watch_body}
         <div style="direction:rtl;text-align:right;font-family:Tahoma,Arial,sans-serif;
                     font-size:12px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:16px;">
           <p>⚠️ این گزارش صرفاً یک تحلیل خودکار بر پایه اندیکاتورهای تکنیکال و پرایس‌اکشن است
@@ -129,6 +166,15 @@ def build_plain_text_report(results):
 
     if not actionable:
         lines.append("سیگنال قابل‌اتکایی یافت نشد.")
+
+    watchlist = [r for r in results if r.get("watch_flags")]
+    if watchlist:
+        lines.append("")
+        lines.append("رصد ویژه (احتمال حرکت انفجاری، جهت نامشخص):")
+        for r in watchlist[:10]:
+            lines.append(f"  {r['symbol']} ({r['market']}) - قیمت: {r.get('price')}")
+            for flag in r["watch_flags"]:
+                lines.append(f"    - {flag}")
 
     return "\n".join(lines)
 
