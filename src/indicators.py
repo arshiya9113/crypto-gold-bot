@@ -3,8 +3,8 @@
 روند (EMA, MACD, ADX)، مومنتوم (RSI, StochRSI, CCI)، نوسان (Bollinger, ATR) و حجم (OBV).
 """
 import numpy as np
-from ta.momentum import CCIIndicator, RSIIndicator, StochRSIIndicator
-from ta.trend import ADXIndicator, EMAIndicator, MACD
+from ta.momentum import RSIIndicator, StochRSIIndicator
+from ta.trend import ADXIndicator, CCIIndicator, EMAIndicator, MACD
 from ta.volatility import AverageTrueRange, BollingerBands
 from ta.volume import OnBalanceVolumeIndicator
 
