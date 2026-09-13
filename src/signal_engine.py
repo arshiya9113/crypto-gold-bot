@@ -34,11 +34,19 @@ from .price_action import (
     find_swing_points,
     nearest_levels,
 )
+from .smart_pressure_index import compute_spi, detect_spi_divergence, detect_spi_exhaustion
 from .smc_patterns import (
+    breaker_block_reaction,
+    compute_htf_bias,
+    compute_premium_discount_zone,
+    detect_breaker_block,
+    detect_equal_highs_lows,
     detect_fvg,
+    detect_liquidity_sweep,
     detect_order_blocks,
     nearest_fvg_reaction,
     order_block_reaction,
+    price_zone,
 )
 
 MIN_BARS = 90
@@ -83,15 +91,29 @@ def analyze_symbol(df, symbol, market_type, timeframe):
     last_swing_high = swing_highs[-1][1] if swing_highs else None
     last_swing_low = swing_lows[-1][1] if swing_lows else None
     if last_swing_high and close > last_swing_high:
-        score += 15
-        reasons_primary.append(
-            f"شکست ساختار به سمت بالا (BOS): قیمت بالای آخرین سقف سوینگ ({last_swing_high:.4g}) بسته شده"
-        )
+        if structure == "DOWNTREND":
+            score += 20
+            reasons_primary.append(
+                f"تغییر کاراکتر بازار (CHoCH) به سمت صعودی: قیمت بالای آخرین سقف سوینگ "
+                f"({last_swing_high:.4g}) در یک روند نزولی قبلی بسته شده - هشدار احتمال برگشت روند"
+            )
+        else:
+            score += 15
+            reasons_primary.append(
+                f"شکست ساختار به سمت بالا (BOS): قیمت بالای آخرین سقف سوینگ ({last_swing_high:.4g}) بسته شده"
+            )
     if last_swing_low and close < last_swing_low:
-        score -= 15
-        reasons_primary.append(
-            f"شکست ساختار به سمت پایین (BOS): قیمت زیر آخرین کف سوینگ ({last_swing_low:.4g}) بسته شده"
-        )
+        if structure == "UPTREND":
+            score -= 20
+            reasons_primary.append(
+                f"تغییر کاراکتر بازار (CHoCH) به سمت نزولی: قیمت زیر آخرین کف سوینگ "
+                f"({last_swing_low:.4g}) در یک روند صعودی قبلی بسته شده - هشدار احتمال برگشت روند"
+            )
+        else:
+            score -= 15
+            reasons_primary.append(
+                f"شکست ساختار به سمت پایین (BOS): قیمت زیر آخرین کف سوینگ ({last_swing_low:.4g}) بسته شده"
+            )
 
     # --- ۲. Order Block (ناحیه احتمالی ورود پول بزرگ) ---
     bullish_ob, bearish_ob = detect_order_blocks(df, swing_highs, swing_lows, lookback=80)
@@ -112,6 +134,92 @@ def analyze_symbol(df, symbol, market_type, timeframe):
     elif fvg_reaction == "BEARISH_FVG_REACTION":
         score -= 10
         reasons_primary.append("قیمت در ناحیه Fair Value Gap نزولی پرنشده قرار دارد (احتمال واکنش فروشندگان)")
+
+    # --- ۳.۱ بریکر بلاک (Order Block شکسته‌شده و معکوس‌شده) ---
+    breaker = detect_breaker_block(df, bullish_ob, bearish_ob)
+    breaker_reaction = breaker_block_reaction(breaker, close, atr)
+    if breaker_reaction == "BULLISH_BREAKER_REACTION":
+        score += 14
+        reasons_primary.append("قیمت به یک Bullish Breaker Block بازگشته (ناحیه‌ای که قبلا مقاومت بوده و اکنون حمایت است)")
+    elif breaker_reaction == "BEARISH_BREAKER_REACTION":
+        score -= 14
+        reasons_primary.append("قیمت به یک Bearish Breaker Block بازگشته (ناحیه‌ای که قبلا حمایت بوده و اکنون مقاومت است)")
+
+    # --- ۳.۲ شکار نقدینگی / استاپ‌هانت ---
+    liquidity_sweep = detect_liquidity_sweep(df, swing_highs, swing_lows)
+    if liquidity_sweep == "BULLISH_LIQUIDITY_SWEEP":
+        score += 16
+        reasons_primary.append("شکار نقدینگی کف (Liquidity Sweep): سایه کندل کف سوینگ را جارو کرده ولی بسته شدن بالای آن - نشانه قوی برگشت صعودی")
+    elif liquidity_sweep == "BEARISH_LIQUIDITY_SWEEP":
+        score -= 16
+        reasons_primary.append("شکار نقدینگی سقف (Liquidity Sweep): سایه کندل سقف سوینگ را جارو کرده ولی بسته شدن پایین آن - نشانه قوی برگشت نزولی")
+
+    # --- ۳.۳ سقف/کف‌های برابر (نواحی تجمع نقدینگی) ---
+    equal_levels = detect_equal_highs_lows(swing_highs, swing_lows)
+    if equal_levels["equal_highs"] and close < equal_levels["equal_highs"]:
+        proximity_pct = (equal_levels["equal_highs"] - close) / close
+        if proximity_pct < 0.01:
+            watch_flags.append(
+                f"قیمت نزدیک سقف‌های برابر (نقدینگی خرید در {equal_levels['equal_highs']:.4g}) - "
+                "احتمال جارو شدن این ناحیه قبل از حرکت اصلی"
+            )
+    if equal_levels["equal_lows"] and close > equal_levels["equal_lows"]:
+        proximity_pct = (close - equal_levels["equal_lows"]) / close
+        if proximity_pct < 0.01:
+            watch_flags.append(
+                f"قیمت نزدیک کف‌های برابر (نقدینگی فروش در {equal_levels['equal_lows']:.4g}) - "
+                "احتمال جارو شدن این ناحیه قبل از حرکت اصلی"
+            )
+
+    # --- ۳.۴ ناحیه پرمیوم/دیسکانت (تعادل لگ اخیر) ---
+    pd_zone = compute_premium_discount_zone(swing_highs, swing_lows)
+    zone_label = price_zone(pd_zone, close)
+    if zone_label == "DISCOUNT":
+        if score > 0:
+            score += 6
+            reasons_primary.append("قیمت در ناحیه دیسکانت (Discount) لگ اخیر - هم‌راستا با تز خرید طبق مفهوم پرمیوم/دیسکانت")
+        elif score < 0:
+            score += 4
+            reasons_primary.append("هشدار پرمیوم/دیسکانت: قیمت در ناحیه دیسکانت است؛ فروش از این نقطه خلاف اصول پول هوشمند است")
+    elif zone_label == "PREMIUM":
+        if score < 0:
+            score -= 6
+            reasons_primary.append("قیمت در ناحیه پرمیوم (Premium) لگ اخیر - هم‌راستا با تز فروش طبق مفهوم پرمیوم/دیسکانت")
+        elif score > 0:
+            score -= 4
+            reasons_primary.append("هشدار پرمیوم/دیسکانت: قیمت در ناحیه پرمیوم است؛ خرید از این نقطه خلاف اصول پول هوشمند است")
+
+    # --- ۳.۵ شاخص فشار هوشمند (Smart Pressure Index - اندیکاتور اختصاصی) ---
+    spi_raw, spi_smoothed, spi_accumulated = compute_spi(df)
+    spi_divergence = detect_spi_divergence(swing_highs, swing_lows, spi_accumulated)
+    if spi_divergence == "BULLISH_DIVERGENCE":
+        score += 18
+        reasons_primary.append(
+            "اندیکاتور اختصاصی SPI: واگرایی صعودی - قیمت کف پایین‌تر زده ولی فشار انباشتی SPI "
+            "(ترکیب بدنه/سایه/حجم) ضعف کمتری نشان می‌دهد؛ نشانه احتمالی ضعف فروشندگان"
+        )
+    elif spi_divergence == "BEARISH_DIVERGENCE":
+        score -= 18
+        reasons_primary.append(
+            "اندیکاتور اختصاصی SPI: واگرایی نزولی - قیمت سقف بالاتر زده ولی فشار انباشتی SPI "
+            "ضعف بیشتری نشان می‌دهد؛ نشانه احتمالی ضعف خریداران"
+        )
+
+    spi_exhaustion = detect_spi_exhaustion(spi_smoothed)
+    if spi_exhaustion == "OVERHEATED_BUY_PRESSURE":
+        score -= 8
+        reasons_primary.append("اندیکاتور اختصاصی SPI: فشار خرید به‌طور غیرعادی بالا رفته - احتمال اصلاح کوتاه‌مدت")
+    elif spi_exhaustion == "OVERHEATED_SELL_PRESSURE":
+        score += 8
+        reasons_primary.append("اندیکاتور اختصاصی SPI: فشار فروش به‌طور غیرعادی بالا رفته - احتمال اصلاح کوتاه‌مدت")
+
+    if not spi_smoothed.empty and not np.isnan(spi_smoothed.iloc[-1]):
+        if spi_smoothed.iloc[-1] > 0.15:
+            score += 5
+            reasons_primary.append("اندیکاتور اختصاصی SPI: فشار لحظه‌ای خریداران (بدنه+سایه+حجم) مثبت است")
+        elif spi_smoothed.iloc[-1] < -0.15:
+            score -= 5
+            reasons_primary.append("اندیکاتور اختصاصی SPI: فشار لحظه‌ای فروشندگان (بدنه+سایه+حجم) منفی است")
 
     # --- ۴. الگوهای بازگشتی کلاسیک (سر و شانه / دوقلو) ---
     hs = detect_head_and_shoulders(swing_highs, swing_lows)
@@ -230,6 +338,23 @@ def analyze_symbol(df, symbol, market_type, timeframe):
             "تخمین اکتشافی: احتمال قرارگیری در یک موج نزولی ایمپالسیو "
             "(⚠️ تخمین ساده بر پایه تناوب سوینگ‌ها، نه شمارش دقیق الیوت)"
         )
+
+    # --- ۱۱. تاییدیه تحلیل بالا-به-پایین (Top-Down): جهت‌گیری تایم‌فریم بالاتر ---
+    htf_bias = compute_htf_bias(df, rule="4h")
+    if htf_bias == "BULLISH":
+        if score > 0:
+            score += 5
+            reasons_primary.append("تاییدیه تایم‌فریم بالاتر (۴ ساعته): روند کلی هم‌جهت صعودی است")
+        elif score < 0:
+            score += 3
+            reasons_primary.append("هشدار: روند تایم‌فریم بالاتر (۴ ساعته) صعودی است؛ در تضاد با تز فروش فعلی")
+    elif htf_bias == "BEARISH":
+        if score < 0:
+            score -= 5
+            reasons_primary.append("تاییدیه تایم‌فریم بالاتر (۴ ساعته): روند کلی هم‌جهت نزولی است")
+        elif score > 0:
+            score -= 3
+            reasons_primary.append("هشدار: روند تایم‌فریم بالاتر (۴ ساعته) نزولی است؛ در تضاد با تز خرید فعلی")
 
     # =========================================================================
     # بخش دوم (فرعی/تاییدیه): اندیکاتورهای تکنیکال
