@@ -13,6 +13,137 @@
 """
 
 
+def detect_liquidity_sweep(df, swing_highs, swing_lows):
+    """
+    شکار نقدینگی / استاپ‌هانت (Liquidity Sweep): قیمت با سایه از یک سقف یا کف
+    سوینگ اخیر عبور می‌کند (استاپ‌لاس‌های خوابیده آنجا را می‌گیرد) ولی با بدنه
+    کندل به داخل محدوده قبلی بازمی‌گردد. این یکی از قوی‌ترین سیگنال‌های بازگشتی
+    در مکتب پول هوشمند است، چون نشان می‌دهد نقدینگی جمع‌آوری شده و قیمت رد شده.
+
+    خروجی: 'BEARISH_LIQUIDITY_SWEEP' (سوئیپ سقف - هشدار نزولی)،
+            'BULLISH_LIQUIDITY_SWEEP' (سوئیپ کف - هشدار صعودی) یا None
+    """
+    if len(df) < 2:
+        return None
+    last = df.iloc[-1]
+
+    for _, level in swing_highs[-3:]:
+        if last["high"] > level and last["close"] < level:
+            return "BEARISH_LIQUIDITY_SWEEP"
+
+    for _, level in swing_lows[-3:]:
+        if last["low"] < level and last["close"] > level:
+            return "BULLISH_LIQUIDITY_SWEEP"
+
+    return None
+
+
+def detect_equal_highs_lows(swing_highs, swing_lows, tolerance=0.0015):
+    """
+    سقف‌ها یا کف‌های برابر (Equal Highs / Equal Lows): چند سوینگ نزدیک به هم در
+    یک سطح، نشانه تجمع نقدینگی (استاپ‌های بازار) که اغلب هدف بعدی حرکت قیمت است
+    (نه لزوما جهت نهایی). خروجی: {'equal_highs': level یا None, 'equal_lows': level یا None}
+    """
+    result = {"equal_highs": None, "equal_lows": None}
+
+    if len(swing_highs) >= 2:
+        h1, h2 = swing_highs[-2][1], swing_highs[-1][1]
+        if abs(h1 - h2) / max(h1, h2) < tolerance:
+            result["equal_highs"] = max(h1, h2)
+
+    if len(swing_lows) >= 2:
+        l1, l2 = swing_lows[-2][1], swing_lows[-1][1]
+        if abs(l1 - l2) / max(l1, l2) < tolerance:
+            result["equal_lows"] = min(l1, l2)
+
+    return result
+
+
+def compute_premium_discount_zone(swing_highs, swing_lows):
+    """
+    بر اساس آخرین لگ قیمتی (بین آخرین سقف و کف سوینگ)، سطح تعادل (Equilibrium)
+    را محاسبه می‌کند. در مکتب پول هوشمند، نیمه بالایی لگ «پرمیوم» (Premium - منطقه
+    ترجیحی فروش) و نیمه پایینی «دیسکانت» (Discount - منطقه ترجیحی خرید) نام دارد.
+    """
+    if not swing_highs or not swing_lows:
+        return None
+    last_high = swing_highs[-1][1]
+    last_low = swing_lows[-1][1]
+    if last_high <= last_low:
+        return None
+    return {"high": last_high, "low": last_low, "equilibrium": (last_high + last_low) / 2}
+
+
+def price_zone(zone, current_price):
+    """موقعیت قیمت را نسبت به ناحیه پرمیوم/دیسکانت مشخص می‌کند."""
+    if not zone:
+        return None
+    return "PREMIUM" if current_price >= zone["equilibrium"] else "DISCOUNT"
+
+
+def detect_breaker_block(df, bullish_ob, bearish_ob):
+    """
+    بریکر بلاک (Breaker Block): وقتی یک Order Block به‌طور قاطع شکسته می‌شود
+    (بسته شدن قیمت آن‌طرف ناحیه)، آن نقش خودش را معکوس می‌کند - یک OB صعودی
+    شکسته‌شده به ناحیه مقاومت تبدیل می‌شود (و بالعکس برای OB نزولی).
+    """
+    if len(df) == 0:
+        return None
+    close = df["close"].iloc[-1]
+
+    if bullish_ob and close < bullish_ob["low"]:
+        return {"type": "BEARISH_BREAKER", "low": bullish_ob["low"], "high": bullish_ob["high"]}
+    if bearish_ob and close > bearish_ob["high"]:
+        return {"type": "BULLISH_BREAKER", "low": bearish_ob["low"], "high": bearish_ob["high"]}
+    return None
+
+
+def breaker_block_reaction(breaker, current_price, atr, proximity_mult=0.5):
+    """بررسی می‌کند آیا قیمت به ناحیه بریکر بلاک بازگشته است."""
+    if not breaker:
+        return None
+    proximity = atr * proximity_mult if atr else 0
+    if (breaker["low"] - proximity) <= current_price <= (breaker["high"] + proximity):
+        return breaker["type"] + "_REACTION"
+    return None
+
+
+def resample_ohlcv(df, rule="4h"):
+    """کندل‌های تایم‌فریم پایین را به یک تایم‌فریم بالاتر تبدیل می‌کند (بدون نیاز
+    به درخواست شبکه جدید) تا امکان تحلیل چند تایم‌فریمی (Top-Down) فراهم شود."""
+    working = df[["timestamp", "open", "high", "low", "close", "volume"]].copy()
+    working = working.set_index("timestamp")
+    resampled = working.resample(rule).agg(
+        {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+    ).dropna()
+    return resampled.reset_index()
+
+
+def compute_htf_bias(df, rule="4h", fast=20, slow=50):
+    """
+    با بازسازی داده تایم‌فریم پایین به یک تایم‌فریم بالاتر (مثلا ۴ ساعته از روی
+    داده ۱ ساعته)، جهت‌گیری کلی‌تر بازار را برای تایید/رد سیگنال تایم‌فریم پایین
+    محاسبه می‌کند (اصل تحلیل بالا-به-پایین / Top-Down در مکتب پول هوشمند).
+    خروجی: 'BULLISH'، 'BEARISH' یا None (داده کافی نبود)
+    """
+    try:
+        htf = resample_ohlcv(df, rule=rule)
+    except Exception:  # noqa: BLE001
+        return None
+
+    if len(htf) < slow + 5:
+        return None
+
+    ema_fast = htf["close"].ewm(span=fast, adjust=False).mean().iloc[-1]
+    ema_slow = htf["close"].ewm(span=slow, adjust=False).mean().iloc[-1]
+
+    if ema_fast > ema_slow:
+        return "BULLISH"
+    if ema_fast < ema_slow:
+        return "BEARISH"
+    return None
+
+
 def detect_fvg(df, lookback=60):
     """
     ناحیه‌های Fair Value Gap پرنشده (unfilled) در N کندل اخیر را پیدا می‌کند.
