@@ -49,8 +49,10 @@ CRYPTO_EXCHANGES = [
 CRYPTO_QUOTE_CURRENCIES = [
     q.strip() for q in _get_str("CRYPTO_QUOTE_CURRENCIES", "USDT,USD").split(",") if q.strip()
 ]
-MAX_CRYPTO_SYMBOLS = _get_int("MAX_CRYPTO_SYMBOLS", 40)          # چند رمزارز برتر بررسی شود
+MAX_CRYPTO_SYMBOLS = _get_int("MAX_CRYPTO_SYMBOLS", 80)          # چند رمزارز برتر (یکتا) بررسی شود
 MIN_QUOTE_VOLUME_USDT = _get_float("MIN_QUOTE_VOLUME_USDT", 1_000_000)  # حداقل حجم معاملات ۲۴ ساعته
+MAX_EXCHANGES_TO_MERGE = _get_int("MAX_EXCHANGES_TO_MERGE", 3)   # چند صرافی موفق با هم ترکیب شوند
+MAX_FETCH_WORKERS = _get_int("MAX_FETCH_WORKERS", 8)             # تعداد Threadهای هم‌زمان برای دریافت کندل
 CRYPTO_TIMEFRAME = _get_str("CRYPTO_TIMEFRAME", "1h")            # تایم‌فریم کندل‌ها
 CRYPTO_CANDLE_LIMIT = _get_int("CRYPTO_CANDLE_LIMIT", 300)       # تعداد کندل برای تحلیل
 TOP_SIGNALS_COUNT = _get_int("TOP_SIGNALS_COUNT", 15)            # چند سیگنال برتر در ایمیل نمایش داده شود
