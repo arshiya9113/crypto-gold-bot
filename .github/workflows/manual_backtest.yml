@@ -1,0 +1,49 @@
+name: Manual Backtest
+
+# فقط دستی اجرا می‌شود (دکمه Run workflow در تب Actions) - هیچ زمان‌بندی خودکاری ندارد.
+# هر وقت دیگر لازمش نداشتید، کافی است همین یک فایل را حذف کنید؛ چیز دیگری
+# در ربات زنده (hourly_signals.yml) تحت تاثیر قرار نمی‌گیرد.
+on:
+  workflow_dispatch:
+    inputs:
+      backtest_days:
+        description: "چند روز تاریخچه کریپتو گرفته شود"
+        required: false
+        default: "120"
+      max_symbols:
+        description: "چند رمزارز بررسی شود"
+        required: false
+        default: "12"
+
+permissions:
+  contents: write
+
+jobs:
+  run-backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60   # بک‌تست داده تاریخی زیادی می‌گیرد، زمان بیشتری نسبت به اجرای زنده لازم دارد
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run backtest
+        env:
+          BACKTEST_DAYS: ${{ github.event.inputs.backtest_days }}
+          BACKTEST_MAX_SYMBOLS: ${{ github.event.inputs.max_symbols }}
+        run: python -m src.run_backtest
+
+      - name: Commit backtest results
+        run: |
+          git config user.name "backtest-bot"
+          git config user.email "backtest-bot@users.noreply.github.com"
+          git add backtest_trades.csv || true
+          git diff --cached --quiet || git commit -m "chore: update backtest_trades.csv [skip ci]"
+          git push || true
