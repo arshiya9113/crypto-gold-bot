@@ -12,7 +12,7 @@ from datetime import datetime
 import pytz
 
 from . import config
-from .data_fetcher import fetch_crypto_ohlcv, fetch_gold_ohlcv, get_top_crypto_symbols_multi
+from .data_fetcher import fetch_gold_ohlcv, fetch_many_crypto_ohlcv, get_multi_exchange_symbols
 from .emailer import build_html_report, build_plain_text_report, send_email
 from .history import log_signal_history
 from .signal_engine import analyze_symbol
@@ -37,27 +37,37 @@ def run():
             print(f"[WARN] تحلیل {ticker} ممکن نشد (داده ناکافی)")
 
     # --- تحلیل رمزارزها ---
-    exchange, symbols = get_top_crypto_symbols_multi(
+    symbol_exchange_pairs = get_multi_exchange_symbols(
         config.CRYPTO_EXCHANGES,
-        max_symbols=config.MAX_CRYPTO_SYMBOLS,
+        max_total_symbols=config.MAX_CRYPTO_SYMBOLS,
         min_quote_volume=config.MIN_QUOTE_VOLUME_USDT,
         quotes=tuple(config.CRYPTO_QUOTE_CURRENCIES),
+        max_exchanges=config.MAX_EXCHANGES_TO_MERGE,
     )
 
-    if exchange is None:
+    if not symbol_exchange_pairs:
         print("[ERROR] هیچ‌کدام از صرافی‌های تنظیم‌شده در دسترس نبودند؛ بخش کریپتو رد شد.")
-        symbols = []
-
-    print(f"[INFO] تعداد رمزارزهای بررسی‌شونده: {len(symbols)}")
-
-    for symbol in symbols:
-        df = fetch_crypto_ohlcv(
-            exchange, symbol, timeframe=config.CRYPTO_TIMEFRAME, limit=config.CRYPTO_CANDLE_LIMIT
+    else:
+        used_exchanges = {type(ex).__name__ for _, ex in symbol_exchange_pairs}
+        print(
+            f"[INFO] تعداد کل رمزارزهای یکتا برای بررسی: {len(symbol_exchange_pairs)} "
+            f"(ترکیب {len(used_exchanges)} صرافی: {', '.join(used_exchanges)})"
         )
-        result = analyze_symbol(df, symbol, "CRYPTO", config.CRYPTO_TIMEFRAME)
-        if result:
-            results.append(result)
-        time.sleep(max(exchange.rateLimit / 1000, 0.2))
+
+        start_time = time.time()
+        ohlcv_by_symbol = fetch_many_crypto_ohlcv(
+            symbol_exchange_pairs,
+            timeframe=config.CRYPTO_TIMEFRAME,
+            limit=config.CRYPTO_CANDLE_LIMIT,
+            max_workers=config.MAX_FETCH_WORKERS,
+        )
+        print(f"[INFO] دریافت داده {len(symbol_exchange_pairs)} نماد در {time.time() - start_time:.1f} ثانیه انجام شد")
+
+        for symbol, _ in symbol_exchange_pairs:
+            df = ohlcv_by_symbol.get(symbol)
+            result = analyze_symbol(df, symbol, "CRYPTO", config.CRYPTO_TIMEFRAME)
+            if result:
+                results.append(result)
 
     actionable = [r for r in results if r.get("signal") in ("LONG", "SHORT")]
     actionable.sort(key=lambda r: r["confidence"], reverse=True)
