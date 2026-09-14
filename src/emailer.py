@@ -19,18 +19,47 @@ def _fmt(value):
         return str(value)
 
 
+def _format_candle_time(candle_time):
+    if candle_time is None:
+        return None
+    try:
+        return candle_time.strftime("%Y-%m-%d %H:%M")
+    except Exception:  # noqa: BLE001
+        return str(candle_time)
+
+
 def _signal_card(result):
     color = SIGNAL_COLORS.get(result["signal"], "#6b7280")
     label = SIGNAL_LABELS_FA.get(result["signal"], result["signal"])
     reasons_html = "".join(
         f'<li style="margin-bottom:4px;">{reason}</li>' for reason in result.get("reasons", [])
     )
+    candle_time_str = _format_candle_time(result.get("candle_time"))
+    evidence_bull = result.get("evidence_bullish")
+    evidence_bear = result.get("evidence_bearish")
+
+    candle_time_html = ""
+    if candle_time_str:
+        candle_time_html = f'''
+        <p style="font-size:12px;color:#9ca3af;margin:0 0 8px 0;">
+          بر اساس آخرین کندل کاملا بسته‌شده در: {candle_time_str}
+        </p>
+        '''
+
+    evidence_html = ""
+    if evidence_bull is not None and evidence_bear is not None:
+        evidence_html = f'''
+        <p style="font-size:12px;color:#6b7280;margin:0 0 8px 0;">
+          شواهد صعودی: <b style="color:#16a34a;">{evidence_bull}</b> &nbsp;|&nbsp;
+          شواهد نزولی: <b style="color:#dc2626;">{evidence_bear}</b>
+        </p>
+        '''
 
     return f"""
     <div style="border:1px solid #e5e7eb;border-right:6px solid {color};border-radius:8px;
                 padding:16px;margin-bottom:16px;background:#ffffff;direction:rtl;text-align:right;
                 font-family:Tahoma,Arial,sans-serif;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <span style="font-size:18px;font-weight:bold;">
           {result['symbol']} <span style="color:#6b7280;font-size:13px;">({result['market']})</span>
         </span>
@@ -38,6 +67,8 @@ def _signal_card(result):
           {label}
         </span>
       </div>
+      {candle_time_html}
+      {evidence_html}
       <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:10px;">
         <tr>
           <td style="padding:4px 0;color:#6b7280;">قیمت ورود (Entry)</td>
@@ -148,6 +179,10 @@ def build_html_report(results, generated_at_str):
           <p>⚠️ این گزارش صرفاً یک تحلیل خودکار بر پایه اندیکاتورهای تکنیکال و پرایس‌اکشن است
           و توصیه مالی یا سرمایه‌گذاری محسوب نمی‌شود. بازارهای کریپتو و طلا نوسان و ریسک بالایی دارند؛
           پیش از هر تصمیمی تحقیق شخصی (DYOR) انجام دهید و مدیریت سرمایه و ریسک را رعایت کنید.</p>
+          <p>⏱️ قیمت ورود بر اساس آخرین کندل <b>کاملا بسته‌شده</b> در زمان اجرای ربات است (زمان دقیق
+          هر سیگنال در کارت مربوطه نوشته شده). اگر بین دریافت و خواندن این ایمیل فاصله افتاده،
+          حتما قیمت لحظه‌ای را با قیمت ورود مقایسه کنید؛ اگر بازار بیش از حد از قیمت ورود دور شده
+          یا قبل از خواندن ایمیل به هدف/حد ضرر رسیده، سیگنال را منقضی در نظر بگیرید.</p>
         </div>
       </div>
     </body>
