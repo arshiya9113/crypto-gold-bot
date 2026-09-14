@@ -34,7 +34,7 @@ def _base_currency(symbol):
     return symbol.split("/")[0]
 
 
-def get_top_crypto_symbols_multi(exchange_ids, max_total_symbols=80, min_quote_volume=1_000_000,
+def get_multi_exchange_symbols(exchange_ids, max_total_symbols=80, min_quote_volume=1_000_000,
                                 quotes=("USDT", "USD"), max_exchanges=3):
     """
     برخلاف حالت قبلی (فقط اولین صرافی در دسترس)، اینجا تا max_exchanges صرافی
