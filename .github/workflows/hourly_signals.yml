@@ -2,7 +2,7 @@ name: Hourly Crypto & Gold Signal Bot
 
 on:
   schedule:
-    - cron: "0 * * * *"   # هر ساعت، در دقیقه صفر (به وقت UTC)
+   # - cron: "0 * * * *"   # هر ساعت، در دقیقه صفر #(به وقت UTC)
   workflow_dispatch: {}     # امکان اجرای دستی از تب Actions
 
 permissions:
